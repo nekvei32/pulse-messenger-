@@ -1,0 +1,16 @@
+node_modules/
+dist/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+ios/App/build/
+ios/build/
+uploads/
+*.db
+*.db-wal
+*.db-shm
+Pulse.apk
+PulseMessenger.exe
+.vscode/
+.DS_Store

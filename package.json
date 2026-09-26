@@ -1,0 +1,53 @@
+{
+  "name": "pulse-messenger",
+  "version": "1.0.0",
+  "description": "Pulse — мессенджер реального времени: комната-чат, ЛС, звонки и экран",
+  "main": "electron-main.js",
+  "scripts": {
+    "test": "node test/integration.js",
+    "start": "node server.js",
+    "app": "electron .",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "qrcode": "^1.5.4",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.pulse.messenger",
+    "productName": "PulseMessenger",
+    "files": [
+      "electron-main.js",
+      "preload.js",
+      "server.js",
+      "reset-password.js",
+      "public/**/*",
+      "node_modules/ws/**/*",
+      "node_modules/qrcode/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "PulseMessenger.exe"
+    }
+  }
+}

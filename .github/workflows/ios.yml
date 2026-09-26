@@ -1,0 +1,53 @@
+name: Build iOS IPA (unsigned, for AltStore/SideStore)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm install
+
+      - name: Sync web assets to iOS
+        run: npx cap sync ios
+
+      - name: Build unsigned .app (no code signing)
+        run: |
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/build \
+            "CODE_SIGNING_ALLOWED=NO" \
+            "CODE_SIGNING_REQUIRED=NO" \
+            "CODE_SIGN_IDENTITY=" \
+            build
+
+      - name: Package unsigned .ipa
+        run: |
+          set -e
+          PROD="ios/build/Build/Products/Release-iphoneos"
+          mkdir -p ipa/Payload
+          cp -R "$PROD/App.app" ipa/Payload/App.app
+          cd ipa
+          zip -r Pulse.ipa Payload
+          cd ..
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pulse-ios-unsigned
+          path: ipa/Pulse.ipa

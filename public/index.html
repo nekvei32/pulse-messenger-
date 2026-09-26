@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss: http: https:;" />
+<title>Pulse — мессенджер</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Экран входа -->
+<div id="authScreen" class="join-screen hidden">
+  <div class="join-card">
+    <div class="logo">
+      <span class="logo-dot"></span>
+      <span>Pulse</span>
+    </div>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="auth-tab active">Вход</button>
+      <button id="tabRegister" class="auth-tab">Регистрация</button>
+    </div>
+
+    <form id="loginForm">
+      <h1>С возвращением</h1>
+      <p class="subtitle">Войди в свой аккаунт</p>
+      <input id="loginNick" type="text" maxlength="20" placeholder="Никнейм" autocomplete="username" />
+      <input id="loginPass" type="password" placeholder="Пароль" autocomplete="current-password" />
+      <button type="submit">Войти</button>
+    </form>
+
+    <form id="registerForm" class="hidden">
+      <h1>Создать аккаунт</h1>
+      <p class="subtitle">Юзернейм уникальный, латиница от 3 символов</p>
+      <input id="regUsername" type="text" maxlength="20" placeholder="@юзернейм" autocomplete="username" />
+      <div id="regUserHint" class="reg-hint"></div>
+      <input id="regNick" type="text" maxlength="20" placeholder="Отображаемое имя" autocomplete="nickname" />
+      <input id="regPass" type="password" placeholder="Пароль (от 4)" autocomplete="new-password" />
+      <input id="regPass2" type="password" placeholder="Повтори пароль" autocomplete="new-password" />
+      <button type="submit">Зарегистрироваться</button>
+    </form>
+
+    <div id="authError" class="auth-error"></div>
+    <div class="join-hint">Node.js + WebSocket + SQLite</div>
+  </div>
+</div>
+
+<!-- Экран автозагрузки -->
+<div id="bootScreen" class="boot-screen">
+  <div class="loader-ring"></div>
+  <div class="boot-text">Подключение…</div>
+</div>
+
+<!-- Основной интерфейс -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="me-card sidebar-head" id="meCard">
+      <span id="meAvatar" class="avatar"></span>
+      <div class="me-info">
+        <span id="meNick" class="me-nick"></span>
+        <span id="meStatus" class="me-status online">в сети</span>
+      </div>
+      <div class="me-actions">
+        <button id="profileBtn" class="icon-btn" title="Профиль"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.2-3.2 3.9-5 7-5s5.8 1.8 7 5"/></svg></button>
+        <button id="settingsBtn" class="icon-btn" title="Настройки"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+        <button id="logoutBtn" class="icon-btn" title="Выйти"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M16 17l5-5-5-5M21 12H9"/></svg></button>
+      </div>
+    </div>
+
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input id="peopleSearch" type="text" placeholder="Поиск: ник, @юз, телефон" autocomplete="off" />
+    </div>
+    <div id="searchResults" class="room-list hidden"></div>
+    <div class="fav-btn" id="favBtn">★ Избранное</div>
+
+    <div class="nav-tabs" style="display:none">
+      <button class="nav-tab active" data-view="rooms">Комнаты</button>
+      <button class="nav-tab" data-view="pm">ЛС <span id="pmUnreadBadge" class="badge hidden">0</span></button>
+      <button class="nav-tab" data-view="contacts">Люди</button>
+    </div>
+
+    <div id="viewRooms" class="nav-list">
+      <div class="nav-label"><span>Все чаты</span><button id="newChannelBtn" class="mini-btn" title="Создать канал">+</button></div>
+      <div id="roomList" class="room-list"></div>
+    </div>
+
+    <div id="viewPm" class="nav-list hidden">
+      <div class="nav-label">Личные сообщения</div>
+      <div id="dialogList" class="room-list"></div>
+    </div>
+
+    <div id="viewContacts" class="nav-list hidden">
+      <div class="nav-label">Все пользователи</div>
+      <div id="contactsList" class="room-list"></div>
+    </div>
+  </aside>
+
+  <main class="chat">
+    <header class="chat-head">
+      <div id="chatTitleBlock">
+        <h2 id="chatTitle">general</h2>
+        <span id="chatSub" class="room-count"></span>
+      </div>
+      <div class="chat-head-right">
+        <span id="typingHint" class="typing-hint"></span>
+        <button id="callPartnerBtn" class="icon-btn small hidden" title="Позвонить"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg></button>
+        <button id="channelInfoBtn" class="icon-btn small hidden" title="Профиль канала"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg></button>
+        <button id="voiceJoinBtn" class="icon-btn small" title="Голосовой чат"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button id="msgSearchBtn" class="icon-btn small" title="Поиск по чату"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
+        <input id="msgSearch" type="text" placeholder="Поиск в чате…" class="hidden" />
+      </div>
+    </header>
+
+    <div id="storiesStrip" class="stories"><div class="story-add" id="storyAddBtn" title="Добавить историю"><span>+</span><em>История</em></div></div>
+
+    <div id="voiceBar" class="voice-bar hidden">
+      <span class="voice-title">🎙 Голосовой канал</span>
+      <span id="voiceUsers" class="voice-users"></span>
+      <button id="voiceMicBtn" class="call-btn smallv" title="Микрофон"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button id="voiceEndBtn" class="call-btn smallv end" title="Выйти"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg></button>
+    </div>
+
+    <div id="pinnedBar" class="pinned-bar hidden">
+      <span class="pinned-ico">📌</span><span id="pinnedText"></span><button id="pinnedClose" class="pinned-close">✕</button>
+    </div>
+
+    <div id="lightbox" class="lightbox hidden"><img id="lbImg" src="" alt="" /><video id="lbVideo" controls autoplay hidden></video></div>
+    <div id="dropBar" class="drop-bar hidden">
+      <span class="drop-ico">📦</span>
+      <div class="drop-meta"><span id="dropName" class="drop-name"></span><span id="dropSize" class="drop-size"></span></div>
+      <button type="button" id="dropSend" class="primary-btn" style="width:auto">Отправить</button>
+      <button type="button" id="dropCancel" class="reply-cancel" title="Отмена">✕</button>
+    </div>
+    <div id="messages" class="messages"></div>
+
+    <button id="scrollDownBtn" class="scroll-down hidden" title="К последним"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+
+    <div id="pickPanel" class="pick-panel hidden">
+      <div class="pick-tabs">
+        <button type="button" class="pick-tab active" data-tab="emoji">Эмодзи</button>
+        <button type="button" class="pick-tab" data-tab="sticker">Стикеры</button>
+        <button type="button" class="pick-tab" data-tab="gif">Гифки</button>
+      </div>
+      <div id="emojiGrid" class="pick-grid"></div>
+      <div id="stickerGrid" class="pick-grid hidden">
+        <button type="button" id="addStickerBtn" class="add-sticker">+ Свой стикер</button>
+        <div id="stickerItems"></div>
+      </div>
+      <div id="gifGrid" class="pick-grid hidden">
+        <button type="button" id="addGifBtn" class="add-sticker">+ Своя гифка</button>
+        <div id="gifItems"></div>
+      </div>
+    </div>
+
+    <form id="messageForm" class="composer">
+      <div id="replyBar" class="reply-bar hidden">
+        <span id="replyLabel" class="reply-label"></span>
+        <button type="button" id="replyCancel" class="reply-cancel">✕</button>
+      </div>
+      <div id="recBar" class="rec-bar hidden">
+        <span class="rec-dot"></span>
+        <span id="recTime" class="rec-time">0:00</span>
+        <span class="rec-hint">Идёт запись…</span>
+        <button type="button" id="recCancel" class="ghost-btn" style="width:auto;margin-left:auto">Отмена</button>
+        <button type="button" id="recStop" class="primary-btn" style="width:auto">Остановить</button>
+      </div>
+      <div class="composer-bar">
+        <button type="button" id="photoBtn" class="comp-btn" title="Вложение">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 9"/></svg></button>
+        <button type="button" id="recordBtn" class="comp-btn" title="Голосовое">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button type="button" id="pickerBtn" class="comp-btn" title="Эмодзи и стикеры">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14c1.2 1.4 2.5 2 4 2s2.8-.6 4-2M9 9.5h.01M15 9.5h.01"/></svg></button>
+        <button type="button" id="pollBtn" class="comp-btn" title="Опрос">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M9.5 20V4M15 20v-7M20.5 20v-3"/></svg></button>
+        <button type="button" id="gifBtn" class="comp-btn" title="GIF">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="3"/><text x="4.5" y="16" font-size="8.5" fill="currentColor" stroke="none" font-family="Arial,monospace" font-weight="bold">GIF</text></svg></button>
+        <input id="photoInput" type="file" accept="image/*,video/*,audio/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.txt,.csv" class="hidden" />
+        <input id="stickerFile" type="file" accept="image/*" class="hidden" />
+        <input id="gifFile" type="file" accept="image/gif" class="hidden" />
+      </div>
+      <div class="composer-row">
+      <input id="messageInput" type="text" maxlength="500" placeholder="Напиши сообщение…" autocomplete="off" />
+      <button type="submit" aria-label="Отправить">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+      </div>
+      <div id="mentionPop" class="mention-pop hidden"></div>
+    </form>
+    <div id="gifPanel" class="gif-panel hidden">
+      <div class="gif-panel-head">
+        <input id="gifSearch" type="text" placeholder="Найди GIF…" autocomplete="off" />
+        <button type="button" id="gifSearchGo" class="primary-btn" style="width:auto">Поиск</button>
+        <button type="button" id="gifClose" class="reply-cancel">✕</button>
+      </div>
+      <div id="gifGrid" class="gif-grid"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Модалка создания канала -->
+<div id="channelModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Создать канал</h3><button id="channelClose" class="modal-close">✕</button></div>
+    <label class="field-label">Имя канала (латиница, до 20)</label>
+    <input id="channelName" type="text" maxlength="20" class="field" placeholder="например: mychannel" />
+    <label class="field-label" style="display:flex;align-items:center;gap:8px;margin-top:10px">
+      <input type="checkbox" id="channelPrivate" /> Приватный канал (по коду-приглашению)</label>
+    <div id="channelMsg" class="profile-msg"></div>
+    <button id="channelSave" class="primary-btn">Создать</button>
+  </div>
+</div>
+
+<!-- Подарки -->
+<div id="giftModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>🎁 Подарить</h3><button id="giftClose" class="modal-close">✕</button></div>
+    <div class="vp-bio" id="giftBal"></div>
+    <input id="giftNote" class="field" maxlength="200" placeholder="Комментарий или эмодзи к подарку...">
+    <div id="giftList" class="gift-list"></div>
+    <button id="giftSendBtn" class="primary-btn hidden" style="width:100%;margin-top:12px">🎁 Отправить</button>
+  </div>
+</div>
+
+<!-- QR приглашение -->
+<div id="qrModal" class="modal-overlay hidden">
+  <div class="modal-card" style="text-align:center">
+    <div class="modal-head"><h3>🔗 Приглашение</h3><button id="qrClose" class="modal-close">✕</button></div>
+    <img id="qrImg" alt="QR" class="qr-img" />
+    <div id="qrLink" class="vp-bio" style="word-break:break-all"></div>
+    <button id="qrCopy" class="ghost-btn" style="margin-top:12px">Копировать ссылку</button>
+  </div>
+</div>
+
+<!-- Создание опроса -->
+<div id="pollModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Новый опрос</h3><button id="pollClose" class="modal-close">✕</button></div>
+    <input id="pollQ" class="field" placeholder="Вопрос" />
+    <div id="pollOpts" style="display:flex;flex-direction:column;gap:6px;margin-top:10px"></div>
+    <button id="pollAdd" class="ghost-btn small" style="margin-top:10px">+ вариант</button>
+    <button id="pollCreate" class="primary-btn" style="margin-top:12px">Создать опрос</button>
+  </div>
+</div>
+
+<!-- Выбор экрана -->
+<div id="screenModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Поделиться экраном</h3><button id="screenClose" class="modal-close">✕</button></div>
+    <label class="field-label">Что показывать</label>
+    <div id="sourceList" class="source-list"></div>
+    <label class="field-label">FPS</label>
+    <select id="fpsSel" class="field"><option value="15">15</option><option value="30" selected>30</option><option value="60">60</option></select>
+  </div>
+</div>
+
+<!-- Звонок -->
+<div id="callOverlay" class="call-overlay hidden">
+  <div class="call-card">
+    <div id="callAvatar" class="call-avatar"></div>
+    <div id="callNick" class="call-nick"></div>
+    <div id="callStatus" class="call-status">Звонок…</div>
+    <div id="callVideoWrap" class="call-video hidden"><video id="remoteVideo" autoplay playsinline></video></div>
+    <video id="localScreenPreview" class="local-prev hidden" autoplay muted playsinline></video>
+    <div id="callActionsHolder">
+      <div id="callActions" class="call-actions">
+        <button id="callMicBtn" class="call-btn" title="Микрофон">🎤</button>
+        <button id="callScreenBtn" class="call-btn" title="Поделиться экраном">🖥️</button>
+        <button id="callEndBtn" class="call-btn end" title="Завершить">✖</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Профиль канала -->
+<div id="channelProfileModal" class="modal-overlay hidden">
+  <div class="modal-card" style="text-align:center">
+    <div id="cpBanner" class="channel-banner"></div>
+    <div id="cpName" class="vp-nick" style="margin-top:10px"></div>
+    <div id="cpDesc" class="vp-bio"></div>
+    <div id="cpMembers" class="vp-bio"></div>
+    <div id="cpOwner" class="vp-bio"></div>
+    <div id="cpStats" class="cp-stats"></div>
+    <button id="cpSubscribe" class="ghost-btn" style="margin-top:8px">Подписаться</button>
+    <div id="cpEdit" class="pass-section hidden" style="text-align:left">
+      <label class="field-label">Описание</label>
+      <textarea id="cpDescInput" rows="2" maxlength="300" class="field"></textarea>
+      <label class="field-label">Цвет канала</label>
+      <div class="accent-row" id="cpColors"></div>
+      <label class="field-label">Баннер</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="cpBannerUp" class="ghost-btn small">Загрузить</button>
+        <button type="button" id="cpBannerClear" class="ghost-btn small">Убрать</button>
+        <input id="cpBannerFile" type="file" accept="image/*" class="hidden" />
+      </div>
+      <button type="button" id="cpInvite" class="ghost-btn">🔗 Скопировать приглашение</button>
+      <button type="button" id="cpSave" class="primary-btn" style="margin-top:12px">Сохранить</button>
+    </div>
+    <button id="cpClose" class="modal-close" style="position:absolute;top:12px;right:14px">✕</button>
+  </div>
+</div>
+
+<!-- Избранное -->
+<div id="favModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>★ Избранное</h3><button id="favClose" class="modal-close">✕</button></div>
+    <div id="favList" class="fav-list"><div class="empty-hint">Пусто</div></div>
+  </div>
+</div>
+
+<!-- Просмотр истории -->
+<div id="storyViewer" class="story-viewer hidden"><img id="storyImg" alt="" /><div id="storyNick" class="story-nick"></div><input id="storyFile" type="file" accept="image/*" class="hidden" /></div>
+
+<!-- Просмотр профиля -->
+<div id="viewProfileModal" class="modal-overlay hidden">
+  <div class="modal-card" style="text-align:center;padding:0;overflow:hidden">
+    <div id="vpBanner" class="channel-banner" style="border-radius:0;height:110px;margin:0"></div>
+    <div style="padding:20px 22px">
+    <div id="vpAvatar" class="profile-avatar" style="margin:0 auto 12px;margin-top:-50px;border:4px solid var(--panel)"></div>
+    <div id="vpNick" class="vp-nick"></div>
+    <div id="vpUser" class="vp-user"></div>
+    <div id="vpBio" class="vp-bio"></div>
+    <div id="vpPhone" class="vp-bio"></div>
+    <div class="modal-head" style="justify-content:center;margin-top:14px;gap:8px">
+      <button id="vpWrite" class="primary-btn" style="width:auto">💬</button>
+      <button id="vpCall" class="primary-btn" style="width:auto;background:linear-gradient(135deg,#27ae60,#2fce78)">📞</button>
+      <button id="vpGift" class="ghost-btn small">🎁</button>
+      <button id="vpBlock" class="ghost-btn small">Блок</button>
+      <button id="vpClose" class="modal-close">✕</button>
+    </div>
+    <div id="vpExtra" class="vp-extra"></div>
+    <div id="vpStats" class="vp-received"></div>
+    <div id="vpReceived" class="vp-received"></div>
+    <div id="vpPinned" class="vp-pinned"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка профиля -->
+<div id="profileModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>Мой профиль</h3>
+      <button id="profileClose" class="modal-close" aria-label="Закрыть">✕</button>
+    </div>
+
+    <div class="profile-avatar-row">
+      <div id="profileAvatar" class="profile-avatar"></div>
+      <div class="profile-avatar-actions">
+        <button id="avatarUploadBtn" type="button">Загрузить фото</button>
+        <button id="avatarClearBtn" type="button" class="ghost">Убрать</button>
+        <input id="avatarFile" type="file" accept="image/*" class="hidden" />
+      </div>
+    </div>
+
+    <label class="field-label">Юзернейм</label>
+    <input id="profileUsername" type="text" maxlength="20" class="field" />
+
+    <label class="field-label">Отображаемое имя</label>
+    <input id="profileNick" type="text" maxlength="20" class="field" />
+
+    <label class="field-label">О себе</label>
+    <textarea id="profileBio" rows="3" maxlength="200" class="field" placeholder="Расскажи о себе…"></textarea>
+
+    <label class="field-label">Телефон</label>
+    <input id="profilePhone" type="text" maxlength="20" class="field" placeholder="+7 …" />
+
+    <label class="field-label">Статус-эмодзи</label>
+    <input id="profileStatusEmoji" type="text" maxlength="8" class="field" placeholder="например: 🌙" />
+
+    <label class="field-label">Баннер профиля</label>
+    <div class="banner-preview" id="profileBanner"></div>
+    <div style="display:flex;gap:8px">
+      <button type="button" id="bannerUploadBtn" class="ghost-btn small">Загрузить</button>
+      <button type="button" id="bannerClearBtn" class="ghost-btn small">Убрать</button>
+      <input id="bannerFile" type="file" accept="image/*" class="hidden" />
+    </div>
+
+    <div id="profileMsg" class="profile-msg"></div>
+
+    <div class="pass-section">
+      <label class="field-label">Рамка аватарки</label>
+      <div id="avFrameRow" class="frame-row"></div>
+      <label class="field-label" style="margin-top:10px">Эффект аватарки</label>
+      <div id="avFxRow" class="frame-row"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+      <button id="profileSave" class="primary-btn">Сохранить профиль</button>
+      <button id="openSettingsBtn" class="ghost-btn">⚙ Настройки приложения</button>
+    </div>
+  </div>
+</div>
+
+<!-- Настройки -->
+<div id="settingsModal" class="modal-overlay hidden">
+  <div class="settings-card">
+    <div class="settings-side">
+      <div class="settings-brand logo"><span class="logo-dot"></span>Настройки</div>
+      <button class="set-nav active" data-sec="profile">Профиль</button>
+      <button class="set-nav" data-sec="privacy">Конфиденциальность</button>
+      <button class="set-nav" data-sec="notify">Уведомления</button>
+      <button class="set-nav" data-sec="appear">Внешний вид</button>
+      <button class="set-nav" data-sec="data">Данные</button>
+      <button class="set-nav" data-sec="pass">Пароль</button>
+      <button class="set-nav" data-sec="about">О приложении</button>
+    </div>
+    <div class="settings-body">
+      <div class="set-sec active" data-sec="profile">
+        <h3>Профиль</h3>
+        <p class="set-hint">Аватар, баннер, имя, био и контакты.</p>
+        <button class="ghost-btn" id="setProfileOpen">Редактировать профиль</button>
+      </div>
+      <div class="set-sec" data-sec="privacy">
+        <h3>Конфиденциальность</h3>
+        <label class="chk"><input type="checkbox" id="setShowPhone" /> Показывать мой телефон другим</label>
+        <label class="chk"><input type="checkbox" id="setReadReceipts" /> Показывать «прочитано» (✓✓)</label>
+        <label class="chk"><input type="checkbox" id="setShowOnline" /> Показывать, когда я онлайн</label>
+        <button class="ghost-btn" id="privacySave">Сохранить</button>
+      </div>
+      <div class="set-sec" data-sec="notify">
+        <h3>Уведомления</h3>
+        <label class="chk"><input type="checkbox" id="soundToggle" /> Звук на сообщения</label>
+        <label class="chk"><input type="checkbox" id="callSoundToggle" /> Звук на звонок</label>
+        <label class="field-label">Скорость голосовых по умолчанию</label>
+        <select id="vspeedSel" class="field"><option value="1">1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
+      </div>
+      <div class="set-sec" data-sec="appear">
+        <h3>Внешний вид</h3>
+        <label class="field-label">Тема</label>
+        <div class="theme-toggle" style="flex-wrap:wrap">
+          <button type="button" id="themeAutoBtn" class="ghost-btn small">Авто</button>
+          <button type="button" id="themeDarkBtn" class="ghost-btn small">Тёмная</button>
+          <button type="button" id="themeLightBtn" class="ghost-btn small">Светлая</button>
+        </div>
+        <label class="field-label" style="margin-top:12px">Цветовая палитра</label>
+        <div class="accent-row" id="accentRow"></div>
+        <label class="chk" style="margin-top:12px"><input type="checkbox" id="compactMode" /> Компактный режим (плотный список)</label>
+        <label class="field-label" style="margin-top:12px">Размер текста в чате</label>
+        <div class="theme-toggle">
+          <button type="button" class="ghost-btn small fs-btn" data-fs="13">S</button>
+          <button type="button" class="ghost-btn small fs-btn" data-fs="14">M</button>
+          <button type="button" class="ghost-btn small fs-btn" data-fs="17">L</button>
+        </div>
+      </div>
+      <div class="set-sec" data-sec="pass">
+        <h3>Пароль</h3>
+        <input id="oldPass" type="password" placeholder="Текущий пароль" class="field" autocomplete="current-password" />
+        <input id="newPass" type="password" placeholder="Новый пароль" class="field" style="margin-top:8px" autocomplete="new-password" />
+        <button type="button" id="changePassBtn" class="ghost-btn">Сменить пароль</button>
+        <div id="pwMsg" class="profile-msg"></div>
+      </div>
+      <div class="set-sec" data-sec="data">
+        <h3>Данные</h3>
+        <div class="set-stat"><span>Мой ID</span><b id="myId"></b></div>
+        <div class="set-stat"><span>Юзернейм</span><b id="myUser"></b></div>
+        <button class="ghost-btn" id="exportChatBtn">Скачать переписку (.txt)</button>
+        <button class="ghost-btn" id="resetThemeBtn">Сбросить настройки темы</button>
+        <label class="field-label" style="margin-top:14px">Адрес сервера (для телефона)</label>
+        <p class="set-hint">Например <b>192.168.1.5:3000</b>. Используется в мобильной версии, где нет локального сервера.</p>
+        <input id="srvAddr" type="text" placeholder="IP:3000 (оставь пустым = этот же сервер)" class="field" autocomplete="off" />
+        <button class="ghost-btn" id="srvSave" style="margin-top:8px">Сохранить сервер</button>
+        <div id="srvMsg" class="vp-bio"></div>
+      </div>
+      <div class="set-sec" data-sec="about">
+        <h3>О приложении</h3>
+        <p class="set-hint">Pulse Messenger — локальный мессенджер реального времени. Node + WebSocket + SQLite + Electron.</p>
+        <div class="set-stat"><span>Версия</span><b id="updVersion">…</b></div>
+        <button class="ghost-btn" id="updBtn">Проверить обновления</button>
+        <div id="updMsg" class="vp-bio"></div>
+      </div>
+      <button id="settingsClose" class="modal-close" style="position:absolute;top:14px;right:16px">✕</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
